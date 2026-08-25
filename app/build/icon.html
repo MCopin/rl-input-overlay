@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Source of build/icon.png. Rendered with Electron:
+     npx electron tools/shoot.js build/icon.html build/icon.png 512 512
+     Two shapes only — a taskbar icon is read at 16 px before it is read at 256. -->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 512px; height: 512px; }
+  body { background: transparent; }
+
+  .tile {
+    width: 512px; height: 512px;
+    border-radius: 108px;
+    background: #0d0f13;
+    background-image: radial-gradient(420px 300px at 32% 24%, rgba(53, 211, 232, 0.16), transparent 66%);
+    position: relative;
+  }
+
+  /* The overlay's own stick indicator: a ring with the stick off-centre. */
+  .stick {
+    position: absolute; left: 74px; top: 150px;
+    width: 212px; height: 212px;
+    border-radius: 50%;
+    border: 22px solid rgba(255, 255, 255, 0.3);
+  }
+  .stick::after {
+    content: '';
+    position: absolute;
+    width: 84px; height: 84px;
+    border-radius: 50%;
+    background: #8cd8ff;
+    left: 6px; top: 52px;
+    box-shadow: 0 0 46px rgba(140, 216, 255, 0.75);
+  }
+
+  /* The bridge out. Thick enough to survive being shrunk to a favicon. */
+  .wire {
+    position: absolute; left: 296px; top: 245px;
+    width: 108px; height: 22px;
+    background: #35d3e8;
+    border-radius: 11px;
+  }
+  .head {
+    position: absolute; left: 386px; top: 210px;
+    width: 0; height: 0;
+    border-left: 62px solid #35d3e8;
+    border-top: 46px solid transparent;
+    border-bottom: 46px solid transparent;
+  }
+</style>
+<div class="tile">
+  <div class="stick"></div>
+  <div class="wire"></div>
+  <div class="head"></div>
+</div>

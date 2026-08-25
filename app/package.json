@@ -1,0 +1,60 @@
+{
+  "name": "rl-input-overlay",
+  "version": "0.2.1",
+  "description": "Live control overlay read from Rocket League through BakkesMod (throttle, boost, drift, air roll, flip…) — transparent window + OBS browser source",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "clips": "electron tools/flip-clips.js",
+    "wire": "electron tools/wire-test.js",
+    "actions": "node tools/actions-test.js",
+    "origins": "node tools/origin-test.js",
+    "pack": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/pack-overlay.ps1",
+    "standalone": "electron tools/standalone-test.js",
+    "icon": "electron tools/shoot.js build/icon.html build/icon.png 512 512",
+    "shot": "electron tools/readme-shot.js",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.mcopin.rl-input-overlay",
+    "productName": "RL Input Overlay",
+    "copyright": "Copyright (c) 2026 Mathieu Copin",
+    "directories": {
+      "output": "../dist/app",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "RL Input Overlay",
+      "artifactName": "${productName} Setup ${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName} ${version} portable.${ext}"
+    }
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}

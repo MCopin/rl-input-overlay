@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RL Input Overlay — Configuration</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #101014;
+    color: #e8e8ec;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #9a9aa4; margin: 24px 0 10px; }
+  .muted { color: #9a9aa4; font-size: 13px; }
+  .card {
+    background: #17171d;
+    border: 1px solid #26262e;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 10px;
+  }
+  .statusline { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  .dotok, .dotko { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dotok { background: #2fb84e; }
+  .dotko { background: #d63434; }
+  button {
+    background: #26262e;
+    color: #e8e8ec;
+    border: 1px solid #34343e;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { background: #30303a; }
+  button.primary { background: #3d6bf0; border-color: #3d6bf0; }
+  button.primary:hover { background: #5580f2; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  code {
+    background: #0b0b0e;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+  }
+  .sliders { display: flex; gap: 32px; flex-wrap: wrap; }
+  .sliders label { font-size: 13px; display: block; margin-bottom: 6px; }
+  input[type=range] { width: 200px; }
+  /* The checkbox sits on the same line as its wording, unlike the block labels
+     that title each slider. */
+  .sliders label.check { display: flex; align-items: center; gap: 7px; font-weight: 400; }
+  /* Same skin as the buttons: a native select would come out light on this
+     dark card. */
+  select {
+    background: #26262e;
+    color: #e8e8ec;
+    border: 1px solid #34343e;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .hint { margin: 6px 0 0; font-size: 12px; }
+  .warn {
+    background: #3a2a12;
+    border: 1px solid #7a5a20;
+    color: #f0c060;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    margin-top: 10px;
+    display: none;
+    line-height: 1.5;
+  }
+  .warn p { margin: 6px 0 0; }
+  .warn ol { margin: 8px 0 0; padding-left: 20px; }
+  .warn li { margin-bottom: 4px; }
+  .warn li:last-child { margin-bottom: 0; }
+  /* The dark chips of the rest of the page vanish on the amber block: same
+     shape, warmed up. */
+  .warn code {
+    background: #241a0b;
+    border-color: #7a5a20;
+    color: #f5cd7a;
+  }
+  /* Leaves for the system browser — main.js refuses to navigate this window. */
+  .warn a { color: #ffd88a; font-weight: 700; }
+</style>
+</head>
+<body>
+  <h1>RL Input Overlay</h1>
+  <div class="muted">Live control overlay read from Rocket League — transparent window + OBS browser source</div>
+
+  <div class="card">
+    <div class="statusline">
+      <span id="stBakkes"></span>
+      <span id="stOverlay"></span>
+    </div>
+    <!-- The game closed, BakkesMod not injected, the plugin absent or not
+         loaded all look identical from here. So: no diagnosis, three lines to
+         check, in the order they break. -->
+    <div class="warn" id="bakkesWarn">
+      <b>⚠️ No data from Rocket League.</b>
+      <p>The overlay reads the <b>Input Bridge</b> plugin. Check:</p>
+      <ol>
+        <li>Rocket League running, <b>BakkesMod</b> injected.</li>
+        <li>Plugin installed —
+          <a href="https://bakkesplugins.com/plugin/875" target="_blank" rel="noreferrer">bakkesplugins.com/plugin/875</a></li>
+        <li>Plugin loaded — <code>F6</code>, then <code>plugin load rloverlayplugin</code></li>
+      </ol>
+    </div>
+    <div class="toolbar">
+      <button id="btnToggle" class="primary">Show / hide the overlay <span class="muted">Ctrl+Shift+O</span></button>
+      <button id="btnEdit">Edit mode (move) <span class="muted">Ctrl+Shift+E</span></button>
+    </div>
+    <p class="muted" style="margin-top:12px">
+      OBS browser source: <code id="obsUrl"></code>
+      <button id="btnCopy" style="padding:3px 10px;font-size:12px">Copy</button>
+    </p>
+  </div>
+
+  <h2>Settings read from the game</h2>
+  <div class="card">
+    <p class="muted" style="margin-top:0;margin-bottom:12px">
+      Deadzone, dodge threshold and sensitivities come from Rocket League, read back every
+      second: a change in <b>Options → Controls</b> follows on its own. Nothing to enter.
+    </p>
+    <div id="rlSettings" class="muted"></div>
+  </div>
+
+  <h2>Display</h2>
+  <div class="card sliders">
+    <div>
+      <label>Trail duration: <b id="trailVal"></b></label>
+      <input type="range" id="trail" min="0.5" max="6" step="0.5">
+    </div>
+    <div>
+      <label>Overlay size: <b id="scaleVal"></b></label>
+      <input type="range" id="scale" min="50" max="200" step="10">
+      <p class="muted hint">Resizes the window. In OBS, size the source instead.</p>
+    </div>
+    <div>
+      <label>Flip numbers</label>
+      <label class="check"><input type="checkbox" id="flipNumbers"> Show cancel, latency, P/R and gain</label>
+      <p class="muted hint">The plane and the timeline stay either way.</p>
+    </div>
+    <div>
+      <label for="speedUnit">Speed unit</label>
+      <select id="speedUnit">
+        <option value="kmh">km/h — like the game's own speedometer</option>
+        <option value="mph">mph</option>
+        <option value="uu">uu/s — the unit the game's numbers are quoted in</option>
+      </select>
+      <p class="muted hint">Moves the bar's graduations with it: supersonic reads 79, 49 or 2200.</p>
+    </div>
+  </div>
+
+<script>
+  let config
+
+  function renderStatus(s) {
+    document.getElementById('stBakkes').innerHTML =
+      `<span class="${s.connected ? 'dotok' : 'dotko'}"></span>Rocket League: ${s.connected ? 'connected' : 'bridge silent'}`
+    document.getElementById('stOverlay').innerHTML =
+      `<span class="${s.overlayVisible ? 'dotok' : 'dotko'}"></span>Overlay: ${s.overlayVisible ? (s.editMode ? 'visible (editing)' : 'visible') : 'hidden'}`
+    document.getElementById('bakkesWarn').style.display = s.connected ? 'none' : 'block'
+    document.getElementById('obsUrl').textContent = s.overlayUrl
+    syncScale(s)
+    renderRlSettings(s)
+  }
+
+  // The window is the truth — a drag-resize in edit mode moves this slider too.
+  // Not while the hand is on it, though: the 1 s status tick would fight it.
+  function syncScale(s) {
+    const scale = document.getElementById('scale')
+    if (document.activeElement === scale) return
+    scale.value = Math.round((s.overlayScale || 1) * 100 / 10) * 10
+    document.getElementById('scaleVal').textContent = Math.round((s.overlayScale || 1) * 100) + '%'
+  }
+
+  // What the game reports, read-only: nothing is adjustable here, but seeing
+  // the values makes it possible to check at a glance that the bridge is honest.
+  function renderRlSettings(s) {
+    const box = document.getElementById('rlSettings')
+    const rl = s.connected ? s.rlSettings : null
+    if (!rl) {
+      box.textContent = 'Waiting for the game…'
+      return
+    }
+    const n = v => Number(v ?? 0).toFixed(2)
+    box.innerHTML =
+      `Deadzone <b>${n(rl.deadzone)}</b> · dodge threshold <b>${n(rl.dodgeThreshold)}</b> · ` +
+      `steering sensitivity <b>${n(rl.steerSens)}</b> · air <b>${n(rl.airSens)}</b>`
+  }
+
+  async function init() {
+    const data = await api.getInit()
+    config = data.config
+    renderStatus(data.status)
+
+    const trail = document.getElementById('trail')
+    trail.value = config.trailSeconds
+    const syncTrail = () => { document.getElementById('trailVal').textContent = trail.value + ' s' }
+    syncTrail()
+    trail.oninput = syncTrail
+    trail.onchange = async () => { config = await api.saveConfig({ trailSeconds: Number(trail.value) }) }
+
+    const scale = document.getElementById('scale')
+    scale.oninput = () => { document.getElementById('scaleVal').textContent = scale.value + '%' }
+    scale.onchange = async () => {
+      renderStatus(await api.setOverlayScale(Number(scale.value) / 100))
+      scale.blur()
+    }
+
+    const flipNumbers = document.getElementById('flipNumbers')
+    flipNumbers.checked = config.flipNumbers !== false
+    flipNumbers.onchange = async () => {
+      config = await api.saveConfig({ flipNumbers: flipNumbers.checked })
+    }
+
+    const speedUnit = document.getElementById('speedUnit')
+    speedUnit.value = config.speedUnit || 'kmh'
+    speedUnit.onchange = async () => {
+      config = await api.saveConfig({ speedUnit: speedUnit.value })
+    }
+
+    document.getElementById('btnToggle').onclick = () => api.toggleOverlay().then(renderStatus)
+    document.getElementById('btnEdit').onclick = async () => {
+      const s = await api.getStatus()
+      renderStatus(await api.setEditMode(!s.editMode))
+    }
+    document.getElementById('btnCopy').onclick = () => navigator.clipboard.writeText(document.getElementById('obsUrl').textContent)
+
+    api.onStatus(renderStatus)
+  }
+  init()
+</script>
+</body>
+</html>

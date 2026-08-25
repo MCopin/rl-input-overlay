@@ -1,0 +1,542 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+/* 340x600 base, scaled by JS according to the window/source size */
+#stage {
+  position: absolute;
+  top: 0; left: 0;
+  width: 340px;
+  height: 600px;
+  transform-origin: top left;
+}
+
+/* ---- Layout ----
+   Six stacked bands, spread over the height. Each takes the full width and
+   spaces its own indicators out: nothing is placed at fixed coordinates, only
+   the side margin tells one band from another.
+
+     throttle gauge + FLIP | SLD BST JMP | ARL AR ARR | grid | speed |
+     numbers + badge  */
+#panel {
+  /* Diameter of the round buttons: also used as a measure elsewhere, the
+     throttle gauge lines up on it. */
+  --btn: 51px;
+  position: absolute;
+  inset: 0;
+  background: rgba(9, 9, 12, 0.86);
+  border-radius: 24px;
+  padding: 26px 0 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+#bands {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+}
+
+/* The three top bands share the same three-column grid. The air roll pills
+   therefore land exactly under the buttons and FLIP under JMP, whatever the
+   width of the labels. */
+.row.cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  justify-items: center;
+}
+
+/* The gauge takes the first two columns, inset by half a button on each side:
+   its ends then land exactly on the outer edges of SLD and BST, below. */
+#throttleBar {
+  grid-column: 1 / 3;
+  justify-self: stretch;
+  margin: 0 calc(var(--btn) / 2);
+}
+
+/* ---- "Checker" layout (⌘⇧L) ----
+   The three bands merge into a single grid, on the same three columns as the
+   other layouts — any wider and the pills would spill out of the panel. Only
+   the last row is offset, by half a column.
+
+     ARL  FAR  ARR
+     SLD  BST   |
+       JMP  FLIP     <- offset, the gauge spans both rows */
+#panel.alt #bands {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  justify-items: center;
+  padding: 0 18px;
+  row-gap: 10px;
+}
+
+/* The bands step aside: their indicators become the grid's cells. */
+#panel.alt #bands .row { display: contents; }
+
+/* The air roll band separates from the button group, which forms a whole. */
+#panel.alt #airRollLeft,
+#panel.alt #airRoll,
+#panel.alt #airRollRight { margin-bottom: 12px; }
+
+#panel.alt #airRollLeft  { grid-area: 1 / 1; }
+#panel.alt #airRoll      { grid-area: 1 / 2; }
+#panel.alt #airRollRight { grid-area: 1 / 3; }
+#panel.alt #slide        { grid-area: 2 / 1; }
+#panel.alt #boost        { grid-area: 2 / 2; }
+#panel.alt #jump         { grid-area: 3 / 1; }
+#panel.alt #flipState    { grid-area: 3 / 2; }
+
+/* The offset is half a column: JMP settles between SLD and BST rather than
+   under SLD. (The panel is 340 px, minus two 18 px gutters.) */
+#panel.alt #jump,
+#panel.alt #flipState { transform: translateX(calc((340px - 36px) / 6)); }
+
+/* The gauge stands up, exactly as tall as the two button rows. */
+#panel.alt #throttleBar {
+  grid-area: 2 / 3 / span 2;
+  justify-self: center;
+  align-self: stretch;
+  margin: 0;
+  width: 13px;
+  height: auto;
+}
+
+#panel.alt #throttleFill, #panel.alt #brakeFill {
+  left: 0; right: 0;
+  width: auto;
+  height: 50%;
+  transform: scaleY(var(--v, 0));
+}
+
+/* Throttle upwards, brake downwards. */
+#panel.alt #throttleFill { top: 0; bottom: auto; transform-origin: center bottom; }
+#panel.alt #brakeFill    { bottom: 0; top: auto; transform-origin: center top; }
+
+#panel.alt #throttleBar .midline {
+  left: 0; right: 0;
+  top: 50%; bottom: auto;
+  width: auto;
+  height: 1px;
+}
+
+/* ---- Air roll pills ---- */
+.pill {
+  border: 3px solid #7a7a7a;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  transition: background 60ms, color 60ms, border-color 60ms;
+}
+
+.pill.tiny { font-size: 13px; padding: 4px 12px; border-width: 2px; }
+
+.pill.on {
+  background: #fff;
+  color: #0a0a0c;
+  border-color: #fff;
+}
+
+/* ---- Speed: value + bar graduated on the game's thresholds ----
+   Inspired by CinderBlocc's Speedometer, which marks the same thresholds.  */
+/* Bar and numbers bound together, packed against each other. */
+.speedblock {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 18px;
+  /* Clears the line of the badge anchored in the corner: without this margin
+     the block sticks to the bottom of the panel and the bar drops down. */
+  margin-bottom: 14px;
+}
+
+#speed { display: flex; }
+
+.gauge { flex: 1; min-width: 0; }
+
+.gauge .track {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.13);
+  overflow: hidden;
+}
+
+/* The gradient covers the whole track and stays pinned to the thresholds: it's
+   the clip that follows speed, not the colours. */
+.gauge .fill {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 calc((1 - var(--p, 0)) * 100%) 0 0);
+  transition: clip-path 60ms linear;
+}
+
+/* Supersonic band, visible even on an empty bar: you can see where the target is. */
+.gauge .sonic-zone {
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  background: rgba(140, 216, 255, 0.16);
+}
+
+/* Hold zone: once supersonic you stay supersonic on the way down, as long as
+   you don't drop under 2100 uu/s. */
+.gauge .hold-zone {
+  position: absolute;
+  top: 0; bottom: 0;
+  background: rgba(140, 216, 255, 0.07);
+}
+
+/* "Engine thrust alone" threshold: beyond it you need boost. The mark sits
+   under the bar: once passed, the colour break is what shows it. */
+.gauge .tick {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.gauge .scale {
+  position: relative;
+  height: 11px;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.gauge .scale span { position: absolute; }
+.gauge .scale .at { transform: translateX(-50%); }
+
+.gauge .scale .sonic { color: rgba(140, 216, 255, 0.7); }
+
+/* FLIP carries the countdown itself: the fill empties right to left over the
+   second jump window. It only shows while airborne — on the ground you always
+   have your flip — and stays full as long as no countdown is running (ground
+   left without jumping). */
+#flipState {
+  /* Anchors the countdown fill, which is absolutely positioned. */
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  border-color: #2fb84e;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+#flipState::before {
+  content: '';
+  position: absolute;
+  /* Overflows onto the border (2px), like the JMP fill: same colour, no seam
+     where they meet. */
+  inset: -2px;
+  background: #2fb84e;
+  transform: scaleX(var(--p, 1));
+  transform-origin: left center;
+}
+
+#flipState span { position: relative; }
+
+.btn {
+  /* Anchors the hold fill, which is absolutely positioned. */
+  position: relative;
+  width: var(--btn);
+  height: var(--btn);
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 3px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  transition: background 60ms;
+}
+
+.btn.sld { border-color: #3d6bf0; }
+.btn.jmp { border-color: #2fb84e; }
+.btn.bst { border-color: #d63434; }
+
+.btn.sld.on { background: #3d6bf0; }
+.btn.bst.on { background: #d63434; }
+
+/* JMP doesn't light up on press: the fill is what carries the information, and
+   a flash on every click teaches nothing. */
+
+/* First jump size: the button fills from the bottom while held, and the level
+   reached stays on screen for a moment after release. */
+.hold-fill {
+  position: absolute;
+  /* Overflows onto the border thickness: the fill is the same colour, so it
+     blends into it instead of leaving a seam where they meet. */
+  inset: -3px;
+  border-radius: 50%;
+  overflow: hidden;
+  opacity: var(--o, 0);
+  pointer-events: none;
+}
+
+.hold-fill::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: calc(var(--p, 0) * 100%);
+  background: #2fb84e;
+}
+
+/* The labels go back above the fill. */
+.btn span { position: relative; }
+
+/* No jump left: button switched off. */
+.btn.spent {
+  opacity: 0.32;
+  filter: grayscale(1);
+}
+
+/* Throttle / brake gauge, horizontal: throttle to the right, brake to the
+   left, from the centre mark. */
+#throttleBar {
+  position: relative;
+  height: 13px;
+  border: 2px solid #b5b5b5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#throttleFill, #brakeFill {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 50%;
+  transform: scaleX(var(--v, 0));
+}
+
+#throttleFill {
+  right: 0;
+  background: #e8e8e8;
+  transform-origin: left center;
+}
+
+#brakeFill {
+  left: 0;
+  background: #d63434;
+  transform-origin: right center;
+}
+
+#throttleBar .midline {
+  position: absolute;
+  left: 50%; top: 0; bottom: 0;
+  width: 1px;
+  background: #b5b5b5;
+}
+
+/* ---- Stick grid + trail + flips ---- */
+#grid {
+  position: relative;
+  align-self: center;
+  /* Offset by half the footprint of the cancel gauge (10 px gap + 10 px bar),
+     so that plane + gauge together are centred instead of the gauge hugging the
+     panel's right edge. */
+  left: -10px;
+  width: 252px;
+  height: 252px;
+  flex-shrink: 0;
+  /* The 2D plane needs room: without this it touches the air roll pills above
+     and the speed bar below. The bottom margin is bigger: it reserves space for
+     the flip numbers, anchored below in absolute, under the overhang of the
+     vertical axis (14 px). */
+  margin: 16px 0 46px;
+  border: 2px dashed #8a8a8a;
+}
+
+#grid .axis {
+  position: absolute;
+  background: #9a9a9a;
+}
+#grid .axis.h { top: 50%; left: -14px; right: -14px; height: 1px; }
+#grid .axis.v { left: 50%; top: -14px; bottom: -14px; width: 1px; }
+
+#trailCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- Flip timeline ----
+   The cancel isn't a percentage but a profile: the game recomputes on every
+   tick the share of torque it suppresses, so you can cut at the start, at the
+   end or in fits and starts. The bar carries flip time (bottom = trigger, top =
+   end of torque); it sits to the right of the plane, in the margin the grid
+   leaves, so as not to print itself over the stick trace. */
+#flipBar {
+  position: absolute;
+  left: 100%;
+  top: 0; bottom: 0;
+  width: 10px;
+  margin-left: 10px;
+  opacity: 0;
+  transition: opacity 180ms;
+}
+
+#flipCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The flip numbers, tucked under the plane. Absolute: they take no part in the
+   panel's vertical distribution, so no layout shifts depending on whether a
+   flip is displayed or not.
+   In exchange they must fit in the plane's bottom margin (46 px): the checker
+   layout, the tallest one, sets the limit. Placed under the overhang of the
+   vertical axis (14 px), which otherwise struck through the text. */
+#flipInfo {
+  position: absolute;
+  top: calc(100% + 18px);
+  /* Wider than the plane, and a size down from the rest of the panel: P/R went
+     from two percentages to two angles ("P134° R155°" against "P46 R54"), which
+     ate the last of the space-between and left the four groups touching. The
+     row still clears the panel's edge by 22 px on each side. */
+  left: -12px; right: -12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 0;
+  transition: opacity 180ms;
+}
+
+#flipInfo b { color: #e8e8e8; font-size: 13px; }
+
+/* The gain's unit caption, which the display setting rewrites. An <i> only to
+   be addressable — it reads as the plain text it replaced. */
+#flipInfo i { font-style: normal; }
+
+/* Same red as the suppressed share of torque in the bar. */
+#flipInfo .cxl b { color: #ff4c4c; }
+
+/* ---- Bottom: speed numbers and source ----
+   Total, then the ground and vertical components, under the bar. */
+#spdParts {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.spd-now {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.spd-now b {
+  color: #e8e8e8;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.spd-now i {
+  font-style: normal;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Supersonic: RL's speed ceiling. */
+.spd-now.sonic b { color: #8cd8ff; }
+
+.spd {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.spd b {
+  color: #e8e8e8;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Says whether the bridge feeding the overlay is alive. Anchored in the bottom
+   right corner, out of the flow: its place must not move whatever happens to
+   the bands above. */
+#srcBadge {
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+body.rl #srcBadge {
+  color: #8cf5a6;
+  border-color: rgba(140, 245, 166, 0.5);
+}
+
+/* ---- Edit mode (Electron window only) ---- */
+body.edit #panel {
+  outline: 2px dashed #35d3e8;
+  -webkit-app-region: drag;
+}
+
+#editHint {
+  display: none;
+  position: absolute;
+  top: -1px;
+  left: 0; right: 0;
+  text-align: center;
+  color: #35d3e8;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px;
+}
+
+body.edit #editHint { display: block; }
+
+/* Reminder of the current permutation of the three top bands, long enough to
+   read it after a change. */
+#bandHint {
+  position: absolute;
+  top: 7px;
+  left: 0; right: 0;
+  text-align: center;
+  color: #35d3e8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  opacity: 0;
+  transition: opacity 250ms;
+  pointer-events: none;
+}

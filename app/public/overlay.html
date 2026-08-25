@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RL Input Overlay</title>
+<link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+<div id="stage">
+  <!-- Absolute layout: every indicator is placed by overlay.css.
+       Drafts are made in layout.html (see README). -->
+  <div id="panel">
+    <div id="editHint">Edit mode — drag the window, ⌘⇧E to lock</div>
+    <div id="bandHint"></div>
+
+    <!-- The three top bands. Their order can be permuted (⌘⇧L), and one of the
+         layouts merges them into a single checkerboard grid. -->
+    <div id="bands">
+    <div class="row cols" data-band="gauge">
+      <div id="throttleBar">
+        <div id="throttleFill"></div>
+        <div id="brakeFill"></div>
+        <div class="midline"></div>
+      </div>
+      <div class="pill tiny" id="flipState"><span>FLIP</span></div>
+    </div>
+
+    <div class="row cols" data-band="buttons">
+      <div class="btn sld" id="slide"><span>SLD</span></div>
+      <div class="btn bst" id="boost"><span>BST</span></div>
+      <div class="btn jmp" id="jump">
+        <div class="hold-fill" id="holdFill"></div>
+        <span>JMP</span>
+      </div>
+    </div>
+
+    <div class="row cols" data-band="air roll">
+      <div class="pill" id="airRollLeft">ARL</div>
+      <div class="pill" id="airRoll" title="free air roll">FAR</div>
+      <div class="pill" id="airRollRight">ARR</div>
+    </div>
+    </div>
+
+    <div id="grid">
+      <div class="axis h"></div>
+      <div class="axis v"></div>
+      <canvas id="trailCanvas"></canvas>
+
+      <!-- Timeline of the last flip, placed beside the plane and not on top of
+           it: the cancel is a profile in time, it needs its own axis. -->
+      <div id="flipBar"><canvas id="flipCanvas"></canvas></div>
+
+      <!-- Anchored under the plane, out of the flow: no layout shifts. -->
+      <div id="flipInfo">
+        <span class="cxl">CXL <b id="flipCxl">0%</b></span>
+        <span>LAT <b id="flipLat">—</b></span>
+        <span>P<b id="flipPitch">0</b>° R<b id="flipRoll">0</b>°</span>
+        <span><b id="flipGain">+0</b> <i id="flipGainUnit">km/h</i></span>
+      </div>
+    </div>
+
+    <!-- The bar and its numbers form one block: the values stay attached to the
+         gauge they comment on. -->
+    <div class="speedblock">
+      <div id="speed">
+        <div class="gauge">
+          <div class="track">
+            <div class="hold-zone" id="spdHold"></div>
+            <div class="sonic-zone" id="spdSonic"></div>
+            <div class="tick" id="spdTick"></div>
+            <div class="tick" id="spdTickOut"></div>
+            <div class="fill" id="spdFill"></div>
+          </div>
+          <div class="scale">
+            <span class="at" id="spdTickLabel">51</span>
+            <span class="at sonic" id="spdSonicLabel">79</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="spdParts">
+        <div class="spd-now"><b id="spdTotal">0</b><i id="spdUnit">km/h</i></div>
+        <div class="spd"><span>GND</span><b id="spdH">0</b></div>
+        <div class="spd"><span>VERT</span><b id="spdV">0</b></div>
+      </div>
+    </div>
+
+    <!-- Anchored in the corner, out of the flow: it must not depend on any band. -->
+    <div id="srcBadge" title="bridge to Rocket League">RL</div>
+  </div>
+</div>
+<!-- The page reads the plugin's frames itself, whether they come through the
+     app or straight off the plugin's WebSocket. -->
+<script src="actions.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>

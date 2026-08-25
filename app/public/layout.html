@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Layout — RL Input Overlay</title>
+<!-- The overlay's real CSS: what we move around here are the real elements. -->
+<link rel="stylesheet" href="overlay.css">
+<style>
+/* ---- Editor chrome (exists only in this page) ---- */
+html, body {
+  height: auto;
+  min-height: 100%;
+  background: #14141a;
+  overflow: auto;
+  color: #e8e8e8;
+  font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+#top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #2a2a34;
+  background: #1b1b22;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+#top h1 { font-size: 14px; font-weight: 700; letter-spacing: 0.3px; }
+#top .hint { color: #8b8b99; font-size: 12px; }
+#top .spacer { flex: 1; }
+
+button, select, input[type=number] {
+  font: inherit;
+  color: #e8e8e8;
+  background: #262631;
+  border: 1px solid #3a3a47;
+  border-radius: 6px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+button:hover { background: #303040; }
+button.primary { background: #2fb84e; border-color: #2fb84e; color: #06140a; font-weight: 700; }
+button.primary:hover { background: #3ccb5b; }
+input[type=number] { width: 68px; cursor: text; }
+
+#main { display: flex; align-items: flex-start; gap: 24px; padding: 24px; }
+
+#board {
+  position: relative;
+  background:
+    linear-gradient(#20202a 1px, transparent 1px) 0 0 / 100% 20px,
+    linear-gradient(90deg, #20202a 1px, transparent 1px) 0 0 / 20px 100%,
+    #101014;
+  border: 1px solid #2a2a34;
+  border-radius: 10px;
+  padding: 30px;
+}
+
+/* #stage keeps its 340x600 from overlay.css, only its anchoring changes. */
+#stage {
+  position: relative;
+  transform: scale(var(--zoom, 1.5));
+  box-shadow: 0 0 0 1px #3a3a47;
+}
+
+/* The panel switches to free positioning: that's the whole point of the page. */
+#panel.free { display: block; padding: 0; }
+
+.blk {
+  position: absolute;
+  /* Scale and rotation around the centre: a block's anchor point stays the
+     same whatever is done to it. */
+  transform-origin: center center;
+  cursor: grab;
+  outline: 1px dashed transparent;
+  outline-offset: 3px;
+}
+.blk:hover { outline-color: rgba(53, 211, 232, 0.45); }
+.blk.sel { outline: 1px solid #35d3e8; }
+.blk.dragging { cursor: grabbing; }
+.blk.hidden { display: none; }
+
+/* Alignment guides */
+.guide {
+  position: absolute;
+  background: #35d3e8;
+  pointer-events: none;
+  z-index: 50;
+}
+.guide.v { top: 0; bottom: 0; width: 1px; }
+.guide.h { left: 0; right: 0; height: 1px; }
+
+#side { width: 330px; flex-shrink: 0; }
+
+#side h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8b8b99;
+  margin: 0 0 8px;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid #2a2a34;
+  border-radius: 7px;
+  margin-bottom: 6px;
+  background: #1b1b22;
+  cursor: pointer;
+}
+.item.sel { border-color: #35d3e8; background: #1e2630; }
+.item .name { font-size: 12px; }
+.item .pos { color: #7d7d8c; font-size: 11px; font-variant-numeric: tabular-nums; }
+.item .rot {
+  padding: 2px 7px;
+  font-size: 11px;
+  border-radius: 5px;
+  color: #a9a9b8;
+}
+.item .rot.act { color: #35d3e8; border-color: #35d3e8; }
+.item input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #35d3e8; cursor: pointer; }
+.item .sizelab { grid-column: 1 / -1; color: #7d7d8c; font-size: 11px; margin-top: -2px; }
+
+#note, #out {
+  width: 100%;
+  background: #101014;
+  color: #e8e8e8;
+  border: 1px solid #2a2a34;
+  border-radius: 7px;
+  padding: 9px;
+  font: 12px/1.5 ui-monospace, Consolas, monospace;
+  resize: vertical;
+}
+#note { font-family: inherit; height: 70px; }
+#out { height: 190px; margin-top: 8px; }
+.row2 { display: flex; gap: 8px; margin-top: 8px; }
+.row2 button { flex: 1; }
+</style>
+</head>
+<body class="rl">
+
+<div id="top">
+  <h1>Overlay layout</h1>
+  <span class="hint">Drag the blocks. Arrows = 1px (Shift = 10). Alt = no snapping. ⟳ to rotate.</span>
+  <span class="spacer"></span>
+  <label class="hint">Panel
+    <input type="number" id="panelW" value="340" min="160" max="900" step="10">
+    ×
+    <input type="number" id="panelH" value="600" min="160" max="1200" step="10">
+  </label>
+  <label class="hint">Zoom
+    <select id="zoom">
+      <option value="1">100 %</option>
+      <option value="1.5" selected>150 %</option>
+      <option value="2">200 %</option>
+    </select>
+  </label>
+  <button id="reset">Reset</button>
+</div>
+
+<div id="main">
+  <div id="board">
+    <div id="stage">
+      <div id="panel">
+
+        <!-- The overlay's real structure. It is measured as-is on load, then
+             converted into draggable blocks. -->
+        <div id="bands">
+        <div class="row cols">
+          <div id="throttleBar" data-blk="throttleBar" data-name="Throttle / brake gauge" data-size="width">
+            <div id="throttleFill" style="--v:.8"></div>
+            <div id="brakeFill" style="--v:0"></div>
+            <div class="midline"></div>
+          </div>
+          <div class="pill tiny" id="flipState" style="opacity:1; --p:.55"
+               data-blk="flipState" data-name="FLIP indicator"><span>FLIP</span></div>
+        </div>
+
+        <div class="row cols">
+          <div class="btn sld on" id="slide" data-blk="slide" data-name="Drift (SLD)"><span>SLD</span></div>
+          <div class="btn bst on" id="boost" data-blk="boost" data-name="Boost (BST)"><span>BST</span></div>
+          <div class="btn jmp" id="jump" data-blk="jump" data-name="Jump (JMP)">
+            <div class="hold-fill" style="--o:1; --p:.7"></div>
+            <span>JMP</span>
+          </div>
+        </div>
+
+        <div class="row cols">
+          <div class="pill on" id="airRollLeft" data-blk="airRollLeft" data-name="Air roll left (ARL)">ARL</div>
+          <div class="pill" id="airRoll" data-blk="airRoll" data-name="Free air roll (FAR)">FAR</div>
+          <div class="pill" id="airRollRight" data-blk="airRollRight" data-name="Air roll right (ARR)">ARR</div>
+        </div>
+        </div>
+
+        <div id="grid" data-blk="grid" data-name="Stick grid" data-size="square">
+          <div class="axis h"></div>
+          <div class="axis v"></div>
+          <canvas id="trailCanvas"></canvas>
+        </div>
+
+        <div class="speedblock">
+        <div id="speed" data-blk="speed" data-name="Speed bar" data-size="width">
+          <div class="gauge">
+            <div class="track">
+              <div class="hold-zone" id="spdHold" style="left:91.304%; right:4.348%"></div>
+              <div class="sonic-zone" id="spdSonic" style="left:95.652%"></div>
+              <div class="tick" id="spdTick" style="left:61.304%"></div>
+              <div class="tick" id="spdTickOut" style="left:91.304%"></div>
+              <div class="fill" id="spdFill" style="--p:.72; background:linear-gradient(90deg,#e8e8e8 0 61.304%,#f0a63c 61.304% 95.652%,#8cd8ff 95.652% 100%)"></div>
+            </div>
+            <div class="scale">
+              <span class="at" id="spdTickLabel" style="left:61.304%">51</span>
+              <span class="at sonic" id="spdSonicLabel" style="left:95.652%">79</span>
+            </div>
+          </div>
+        </div>
+
+          <div id="spdParts" data-blk="spdParts" data-name="Speed numbers">
+            <div class="spd-now"><b id="spdTotal">60</b><i>km/h</i></div>
+            <div class="spd"><span>GND</span><b id="spdH">59</b></div>
+            <div class="spd"><span>VERT</span><b id="spdV">8</b></div>
+          </div>
+        </div>
+
+        <div id="srcBadge" data-blk="srcBadge" data-name="Source badge">RL</div>
+
+      </div>
+    </div>
+  </div>
+
+  <div id="side">
+    <h2>Elements</h2>
+    <div id="list"></div>
+
+    <h2 style="margin-top:18px">What you want to explain</h2>
+    <textarea id="note" placeholder="E.g.: speed at the top, bigger grid, drop the badge…"></textarea>
+
+    <div class="row2">
+      <button class="primary" id="export">Export</button>
+      <button id="copy">Copy</button>
+    </div>
+    <textarea id="out" readonly placeholder="The layout description shows up here — paste it into the chat."></textarea>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s)
+const stage = $('#stage')
+const panel = $('#panel')
+const board = $('#board')
+
+const SNAP = 2
+const STORE = 'rl-overlay-layout'
+
+let zoom = 1.5
+let blocks = []
+let selected = null
+
+// ---- Setup: measure the real layout, then freeze it ----
+// Starting from the real structure avoids copying coordinates by hand: the
+// editor's starting point is exactly today's overlay.
+function build() {
+  // We measure at scale 1: otherwise every dimension would come out multiplied
+  // by the display zoom.
+  stage.style.setProperty('--zoom', 1)
+  const pr = panel.getBoundingClientRect()
+  const found = [...panel.querySelectorAll('[data-blk]')]
+
+  blocks = found.map(el => {
+    const r = contentRect(el)
+    return {
+      id: el.dataset.blk,
+      name: el.dataset.name,
+      size: el.dataset.size || null,
+      el,
+      x: Math.round(r.left - pr.left),
+      y: Math.round(r.top - pr.top),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+      w0: Math.round(r.width),
+      h0: Math.round(r.height),
+      scale: +el.dataset.scale || 1,
+      rot: 0,
+      visible: true,
+    }
+  })
+
+  // The blocks become direct children of the panel, absolutely positioned.
+  for (const b of blocks) {
+    panel.appendChild(b.el)
+    b.el.classList.add('blk')
+    // Inline: #cluster, #throttleBar and #grid set `position: relative` through
+    // their id, which would win over the .blk class and leave them in the flow.
+    // They would stay stacked instead of being placed.
+    b.el.style.position = 'absolute'
+    // The cluster's buttons are pinned by `right`/`bottom`: without this they
+    // would be over-constrained and would ignore the placement.
+    b.el.style.right = 'auto'
+    b.el.style.bottom = 'auto'
+    if (b.el.classList.contains('row')) b.el.style.display = 'inline-flex'
+    if (b.id === 'srcBadge') b.el.style.marginLeft = '0'
+  }
+  // The original containers (rows, cluster) have done their job.
+  for (const rest of [...panel.children]) {
+    if (!rest.classList.contains('blk')) rest.remove()
+  }
+  panel.classList.add('free')
+  stage.style.setProperty('--zoom', zoom)
+
+  apply()
+}
+
+// A .row takes the full width but its content is centred: we frame on the
+// content, otherwise the block "jumps" when it goes absolute.
+function contentRect(el) {
+  if (!el.classList.contains('row') || !el.children.length) return el.getBoundingClientRect()
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity
+  for (const c of el.children) {
+    const cr = c.getBoundingClientRect()
+    l = Math.min(l, cr.left); t = Math.min(t, cr.top)
+    r = Math.max(r, cr.right); b = Math.max(b, cr.bottom)
+  }
+  return { left: l, top: t, width: r - l, height: b - t }
+}
+
+function apply() {
+  for (const b of blocks) {
+    b.el.style.left = b.x + 'px'
+    b.el.style.top = b.y + 'px'
+    b.el.style.transform = `rotate(${b.rot}deg) scale(${b.scale})`
+    b.el.classList.toggle('hidden', !b.visible)
+    if (b.size === 'width') b.el.style.width = b.w + 'px'
+    if (b.size === 'height') b.el.style.height = b.h + 'px'
+    if (b.size === 'square') {
+      b.el.style.width = b.w + 'px'
+      b.el.style.height = b.w + 'px'
+      b.h = b.w
+    }
+  }
+  if (blocks.some(b => b.size === 'square')) sizeCanvas()
+  renderList()
+  save()
+}
+
+// ---- Dragging ----
+let drag = null
+
+stage.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.blk')
+  if (!el) { select(null); return }
+  const b = blocks.find(x => x.el === el)
+  select(b)
+  drag = { b, sx: e.clientX, sy: e.clientY, ox: b.x, oy: b.y }
+  el.setPointerCapture(e.pointerId)
+  el.classList.add('dragging')
+  e.preventDefault()
+})
+
+stage.addEventListener('pointermove', e => {
+  if (!drag) return
+  const dx = (e.clientX - drag.sx) / zoom
+  const dy = (e.clientY - drag.sy) / zoom
+  let x = drag.ox + dx
+  let y = drag.oy + dy
+  if (!e.altKey) { x = Math.round(x / SNAP) * SNAP; y = Math.round(y / SNAP) * SNAP }
+  drag.b.x = Math.round(x)
+  drag.b.y = Math.round(y)
+  guides(drag.b, e.altKey)
+  apply()
+})
+
+stage.addEventListener('pointerup', e => {
+  if (!drag) return
+  drag.b.el.classList.remove('dragging')
+  drag = null
+  clearGuides()
+})
+
+// Snapping to the panel's axes and to the other blocks' edges.
+function guides(b, off) {
+  clearGuides()
+  if (off) return
+  const w = panel.clientWidth, h = panel.clientHeight
+  // Scale and rotation happen around the centre, which therefore always stays
+  // in the middle of the original box.
+  const cx = b.x + b.w / 2
+  const cy = b.y + b.h / 2
+
+  if (Math.abs(cx - w / 2) <= 3) { b.x = Math.round((w - b.w) / 2); guide('v', w / 2) }
+  if (Math.abs(cy - h / 2) <= 3) { b.y = Math.round((h - b.h) / 2); guide('h', h / 2) }
+
+  for (const o of blocks) {
+    if (o === b || !o.visible) continue
+    if (Math.abs(b.x - o.x) <= 3) { b.x = o.x; guide('v', o.x) }
+    if (Math.abs(b.y - o.y) <= 3) { b.y = o.y; guide('h', o.y) }
+  }
+}
+
+function guide(dir, at) {
+  const g = document.createElement('div')
+  g.className = 'guide ' + dir
+  g.style[dir === 'v' ? 'left' : 'top'] = at + 'px'
+  panel.appendChild(g)
+}
+const clearGuides = () => panel.querySelectorAll('.guide').forEach(g => g.remove())
+
+// ---- Selection, keyboard ----
+function select(b) {
+  selected = b
+  for (const x of blocks) x.el.classList.toggle('sel', x === b)
+  renderList()
+}
+
+addEventListener('keydown', e => {
+  if (!selected || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return
+  const step = e.shiftKey ? 10 : 1
+  const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key]
+  if (!move) return
+  selected.x += move[0]
+  selected.y += move[1]
+  apply()
+  e.preventDefault()
+})
+
+// ---- Side panel ----
+function renderList() {
+  const list = $('#list')
+  list.innerHTML = ''
+  for (const b of blocks) {
+    const row = document.createElement('div')
+    row.className = 'item' + (b === selected ? ' sel' : '')
+
+    const cb = document.createElement('input')
+    cb.type = 'checkbox'
+    cb.checked = b.visible
+    cb.onclick = e => { e.stopPropagation(); b.visible = cb.checked; apply() }
+
+    const name = document.createElement('div')
+    name.className = 'name'
+    name.textContent = b.name
+
+    const rot = document.createElement('button')
+    rot.className = 'rot' + (b.rot ? ' act' : '')
+    rot.textContent = `⟳ ${b.rot}°`
+    rot.title = 'Rotate by 90°'
+    rot.onclick = e => { e.stopPropagation(); b.rot = (b.rot + 90) % 360; apply() }
+
+    const pos = document.createElement('div')
+    pos.className = 'pos'
+    pos.textContent = `${b.x}, ${b.y}`
+
+    row.append(cb, name, rot, pos)
+
+    const sl = document.createElement('input')
+    sl.type = 'range'
+    const lab = document.createElement('div')
+    lab.className = 'sizelab'
+
+    if (b.size === 'width' || b.size === 'square') {
+      sl.min = 60; sl.max = 340; sl.step = 2; sl.value = b.w
+      lab.textContent = b.size === 'square' ? `side ${b.w} px` : `width ${b.w} px`
+      sl.oninput = () => { b.w = +sl.value; apply() }
+    } else if (b.size === 'height') {
+      sl.min = 40; sl.max = 300; sl.step = 2; sl.value = b.h
+      lab.textContent = `height ${b.h} px`
+      sl.oninput = () => { b.h = +sl.value; apply() }
+    } else {
+      sl.min = 0.5; sl.max = 2; sl.step = 0.05; sl.value = b.scale
+      lab.textContent = `scale ${b.scale.toFixed(2)}×`
+      sl.oninput = () => { b.scale = +sl.value; apply() }
+    }
+    sl.onclick = e => e.stopPropagation()
+    row.append(sl, lab)
+
+    row.onclick = () => select(b)
+    list.appendChild(row)
+  }
+}
+
+// ---- Panel size, zoom ----
+// The panel is inset:0 inside the stage: resizing the stage is enough.
+function setPanel(w, h) {
+  stage.style.width = w + 'px'
+  stage.style.height = h + 'px'
+  sizeBoard()
+  apply()
+}
+$('#panelW').oninput = e => setPanel(+e.target.value, panel.clientHeight)
+$('#panelH').oninput = e => setPanel(panel.clientWidth, +e.target.value)
+$('#zoom').onchange = e => {
+  zoom = +e.target.value
+  stage.style.setProperty('--zoom', zoom)
+  sizeBoard()
+  sizeCanvas()
+}
+
+function sizeBoard() {
+  board.style.width = panel.clientWidth * zoom + 60 + 'px'
+  board.style.height = panel.clientHeight * zoom + 60 + 'px'
+}
+
+// ---- Export ----
+$('#export').onclick = () => {
+  const out = {
+    panel: { w: panel.clientWidth, h: panel.clientHeight },
+    note: $('#note').value.trim(),
+    // `center` is the reliable anchor: scale and rotation happen around it, it
+    // doesn't move. x/y describe the box before transformation.
+    blocks: blocks.map(b => ({
+      id: b.id,
+      name: b.name,
+      visible: b.visible,
+      center: [Math.round(b.x + b.w / 2), Math.round(b.y + b.h / 2)],
+      x: b.x, y: b.y,
+      w: Math.round(b.w * b.scale), h: Math.round(b.h * b.scale),
+      scale: +b.scale.toFixed(2),
+      rotation: b.rot,
+    })),
+  }
+  $('#out').value = JSON.stringify(out, null, 2)
+}
+
+$('#copy').onclick = async () => {
+  if (!$('#out').value) $('#export').onclick()
+  await navigator.clipboard.writeText($('#out').value)
+  $('#copy').textContent = 'Copied'
+  setTimeout(() => ($('#copy').textContent = 'Copy'), 1200)
+}
+
+$('#reset').onclick = () => { localStorage.removeItem(STORE); location.reload() }
+
+// ---- Persistence ----
+function save() {
+  localStorage.setItem(STORE, JSON.stringify({
+    panel: { w: panel.clientWidth, h: panel.clientHeight },
+    note: $('#note').value,
+    blocks: blocks.map(b => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h, scale: b.scale, rot: b.rot, visible: b.visible })),
+  }))
+}
+
+function restore() {
+  let saved
+  try { saved = JSON.parse(localStorage.getItem(STORE)) } catch { return }
+  // A draft saved before the keys were renamed has no `blocks`: ignore it
+  // rather than throw, the editor then starts from the real layout.
+  if (!saved?.blocks) return
+  $('#panelW').value = saved.panel.w
+  $('#panelH').value = saved.panel.h
+  stage.style.width = saved.panel.w + 'px'
+  stage.style.height = saved.panel.h + 'px'
+  $('#note').value = saved.note || ''
+  for (const s of saved.blocks) {
+    const b = blocks.find(x => x.id === s.id)
+    if (b) Object.assign(b, { x: s.x, y: s.y, w: s.w, h: s.h, scale: s.scale, rot: s.rot || 0, visible: s.visible })
+  }
+}
+
+// ---- Grid: a frozen trail, so the block isn't an empty square ----
+function sizeCanvas() {
+  const c = $('#trailCanvas')
+  if (!c) return
+  const r = c.getBoundingClientRect()
+  if (!r.width) return
+  c.width = Math.round(r.width / zoom)
+  c.height = Math.round(r.height / zoom)
+  drawTrail()
+}
+
+function drawTrail() {
+  const c = $('#trailCanvas')
+  if (!c || !c.width) return
+  const x = c.getContext('2d')
+  const w = c.width, h = c.height
+  x.clearRect(0, 0, w, h)
+  x.strokeStyle = 'rgba(120,180,255,0.35)'
+  x.setLineDash([4, 4])
+  x.beginPath()
+  x.arc(w / 2, h / 2, w * 0.29, 0, Math.PI * 2)
+  x.stroke()
+  x.setLineDash([])
+  x.strokeStyle = 'rgba(255,255,255,0.55)'
+  x.lineWidth = 2
+  x.beginPath()
+  x.moveTo(w / 2, h / 2)
+  x.quadraticCurveTo(w * 0.72, h * 0.42, w * 0.78, h * 0.3)
+  x.stroke()
+  x.fillStyle = '#fff'
+  x.fillRect(w * 0.78 - 4, h * 0.3 - 4, 8, 8)
+}
+
+$('#note').oninput = save
+
+// The largest zoom that fits in the window, to avoid opening on a panel cut in
+// half.
+function fitZoom() {
+  const avail = innerHeight - $('#top').offsetHeight - 34
+  const best = [2, 1.5, 1].find(z => panel.clientHeight * z <= avail) || 1
+  zoom = best
+  $('#zoom').value = String(best)
+  stage.style.setProperty('--zoom', zoom)
+}
+
+build()
+restore()
+fitZoom()
+apply()
+sizeBoard()
+sizeCanvas()
+</script>
+</body>
+</html>
+
